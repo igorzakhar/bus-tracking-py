@@ -1,24 +1,48 @@
+import itertools
 import json
 import logging
+import sys
 
 import trio
-from trio_websocket import serve_websocket, ConnectionClosed
+from trio_websocket import ConnectionClosed
+from trio_websocket import serve_websocket
 
 
-async def ws_handler(request):
+async def load_bus_route(filename):
+    async with await trio.open_file(filename) as fp:
+        return await fp.read()
+
+
+async def run_bus(request):
     ws = await request.accept()
-    server_msg = {
-        "msgType": "Buses",
-        "buses": [
-            {"busId": "c790сс", "lat": 55.7500, "lng": 37.600, "route": "120"},
-            {"busId": "a134aa", "lat": 55.7494, "lng": 37.621, "route": "67к"},
-        ]
-    }
+
+    bus_route = json.loads(await load_bus_route('bus_routes/156.json'))
+
+    coordinates = bus_route['coordinates']
+    route_cycle = itertools.cycle(coordinates)
+
     while True:
         try:
+
+            bus_coords = next(route_cycle)
+            lat, lng = bus_coords[0], bus_coords[1]
+            server_msg = {
+                "msgType": "Buses",
+                "buses": [
+                    {
+                        "busId": "1234567890",
+                        "lat": lat,
+                        "lng": lng,
+                        "route": bus_route["name"]
+                    },
+                ]
+            }
+
             await ws.send_message(json.dumps(server_msg))
-            front_msg = await ws.get_message()
-            logging.debug(json.loads(front_msg))
+            logging.debug(server_msg['buses'])
+
+            await trio.sleep(0.1)
+
         except ConnectionClosed:
             break
 
@@ -27,7 +51,11 @@ async def main():
     logging.getLogger('trio-websocket').setLevel(logging.WARNING)
     logging.basicConfig(level=logging.DEBUG, format='%(message)s')
 
-    await serve_websocket(ws_handler, '127.0.0.1', 8000, ssl_context=None)
+    await serve_websocket(run_bus, '127.0.0.1', 8000, ssl_context=None)
 
 
-trio.run(main)
+if __name__ == '__main__':
+    try:
+        trio.run(main)
+    except KeyboardInterrupt:
+        sys.exit()
