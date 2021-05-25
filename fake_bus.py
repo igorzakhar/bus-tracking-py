@@ -28,7 +28,7 @@ async def run_bus(url, bus_id, route):
                 bus_coords = next(route_cycle)
                 lat, lng = bus_coords[0], bus_coords[1]
                 coordinates = {
-                    'busId': f'{route["name"]}-0',
+                    'busId': f'{route["name"]}',
                     'lat': lat,
                     'lng': lng,
                     'route': route['name']
@@ -43,15 +43,15 @@ async def run_bus(url, bus_id, route):
     except OSError as ose:
         logging.exception(ose, exc_info=False)
     except ConnectionClosed:
-        exc_desc = f'Connection Closed {ws.local.address}:{ws.local.port}'
-        logging.exception(exc_desc, exc_info=False)
+        desc = f'Connection Closed {ws.local.address}:{ws.local.port}'
+        logging.exception(desc, exc_info=False)
 
 
 async def main():
     logging.getLogger('trio-websocket').setLevel(logging.WARNING)
     logging.basicConfig(level=logging.DEBUG, format='%(message)s')
 
-    url = 'ws://127.0.0.1:9000'
+    url = 'ws://127.0.0.1:8080'
 
     async with trio.open_nursery() as nursery:
         for route in load_routes():
