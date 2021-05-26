@@ -6,8 +6,6 @@ import random
 import sys
 
 import trio
-
-from trio_websocket import ConnectionClosed
 from trio_websocket import open_websocket_url
 
 
@@ -19,50 +17,63 @@ def load_routes(directory_path='routes'):
                 yield json.load(file)
 
 
-async def run_bus(url, bus_id, route):
+async def run_bus(send_channel, bus_id, route):
     coords = route['coordinates']
     offset = random.randrange(len(coords))
     route_offset = itertools.chain(coords[offset:], coords[:offset])
     route_loop = itertools.cycle(route_offset)
 
-    try:
-        async with open_websocket_url(url) as ws:
-            while True:
-                bus_coords = next(route_loop)
-                lat, lng = bus_coords[0], bus_coords[1]
-                coordinates = {
-                    'busId': bus_id,
-                    'lat': lat,
-                    'lng': lng,
-                    'route': route['name']
-                }
+    while True:
+        bus_coords = next(route_loop)
+        lat, lng = bus_coords[0], bus_coords[1]
+        coordinates = {
+            'busId': bus_id,
+            'lat': lat,
+            'lng': lng,
+            'route': route['name']
+        }
+        message = json.dumps(coordinates, ensure_ascii=True)
+        await send_channel.send(message)
+        logging.debug(f'Sent message: {coordinates}')
+        await trio.sleep(1)
 
-                message = json.dumps(coordinates, ensure_ascii=True)
-                await ws.send_message(message)
-                logging.debug(f'Sent message: {coordinates}')
 
-                await trio.sleep(1)
+async def send_updates(server_address, receive_channel):
+    async with open_websocket_url(server_address) as ws:
+        async with receive_channel:
+            async for value in receive_channel:
+                await ws.send_message(value)
+                await trio.sleep(0.1)
 
-    except OSError as ose:
-        logging.exception(ose, exc_info=False)
-        raise
-    except ConnectionClosed:
-        desc = f'Connection Closed {ws.local.address}:{ws.local.port}'
-        logging.exception(desc, exc_info=False)
+
+async def make_channels(nursery, server_addr, sockets_count):
+    send_channels = []
+    for _ in range(sockets_count):
+        send_channel, receive_channel = trio.open_memory_channel(0)
+        async with send_channel, receive_channel:
+            nursery.start_soon(
+                send_updates, server_addr, receive_channel.clone()
+            )
+            send_channels.append(send_channel.clone())
+    return send_channels
 
 
 async def main():
     logging.getLogger('trio-websocket').setLevel(logging.WARNING)
     logging.basicConfig(level=logging.DEBUG, format='%(message)s')
 
-    url = 'ws://127.0.0.1:8080'
-    buses_per_route = 2
+    server_url = 'ws://127.0.0.1:8080'
+    buses_per_route = 10
+    sockets_count = 5
 
     async with trio.open_nursery() as nursery:
+        send_channels = await make_channels(nursery, server_url, sockets_count)
+
         for route in load_routes():
             for bus_index in range(buses_per_route):
+                send_channel = random.choice(send_channels)
                 bus_id = f'{route["name"]}-{bus_index}'
-                nursery.start_soon(run_bus, url, bus_id, route)
+                nursery.start_soon(run_bus, send_channel, bus_id, route)
 
 
 if __name__ == '__main__':
