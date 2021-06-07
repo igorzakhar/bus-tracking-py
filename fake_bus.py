@@ -1,3 +1,4 @@
+import functools
 import itertools
 import json
 import logging
@@ -9,10 +10,12 @@ from contextlib import suppress
 import asyncclick as click
 import trio
 
+from trio_websocket import ConnectionClosed
+from trio_websocket import HandshakeError
 from trio_websocket import open_websocket_url
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('fake-bus-service')
 
 
 def load_routes(directory_path='routes', routes_number=None):
@@ -21,6 +24,25 @@ def load_routes(directory_path='routes', routes_number=None):
             filepath = os.path.join(directory_path, filename)
             with open(filepath, 'r', encoding='utf8') as file:
                 yield json.load(file)
+
+
+def relaunch_on_disconnect(async_function):
+
+    @functools.wraps(async_function)
+    async def wrapper(*args, **kwargs):
+
+        while True:
+            try:
+                await async_function(*args, **kwargs)
+
+            except (HandshakeError, ConnectionClosed):
+                reconnect_timeout = 5
+                logger.debug(
+                    f'Disconnect. Try to reconnect in {reconnect_timeout} sec.'
+                )
+                await trio.sleep(reconnect_timeout)
+
+    return wrapper
 
 
 async def run_bus(send_channel, bus_id, route, timeout):
@@ -44,44 +66,70 @@ async def run_bus(send_channel, bus_id, route, timeout):
         await trio.sleep(timeout)
 
 
+@relaunch_on_disconnect
 async def send_updates(server_address, receive_channel, timeout):
     async with open_websocket_url(server_address) as ws:
-        async with receive_channel:
-            async for value in receive_channel:
-                await ws.send_message(value)
-                await trio.sleep(timeout)
+        async for value in receive_channel:
+            await ws.send_message(value)
+            await trio.sleep(timeout)
 
 
 async def make_channels(nursery, server_addr, sockets_count, timeout):
     send_channels = []
     for _ in range(sockets_count):
         send_channel, receive_channel = trio.open_memory_channel(0)
-        async with send_channel, receive_channel:
-            nursery.start_soon(
-                send_updates, server_addr, receive_channel.clone(), timeout
-            )
-            send_channels.append(send_channel.clone())
+        nursery.start_soon(
+            send_updates, server_addr, receive_channel.clone(), timeout
+        )
+        send_channels.append(send_channel.clone())
     return send_channels
 
 
 @click.command()
-@click.option("--server", '-s', default='127.0.0.1:8080', help="Address of the tracking server.")
-@click.option("--routes_number", '-r', default=10, help="Number of routes.")
-@click.option("--buses_per_route", '-b', default=10, help="Number of buses per one route.")
-@click.option("--websockets_number", '-ws', default=5, help="Number of open ws connections.")
-@click.option("--emulator_id", '-ei', default=1, help="Emulator ID.")
-@click.option("--refresh_timeout", '-to', default=1.0, help="Timeout for refresh in secs.")
-@click.option("--verbose", '-v', is_flag=True, default=False, help="Enabling verbose logging.")
+@click.option(
+    "--server",
+    "-s",
+    default="127.0.0.1:8080",
+    help="Address of the tracking server."
+)
+@click.option(
+    "--routes_number",
+    "-r", default=10,
+    help="Number of routes."
+)
+@click.option(
+    "--buses_per_route",
+    "-b",
+    default=10,
+    help="Number of buses per one route."
+)
+@click.option(
+    "--websockets_number",
+    "-ws", default=5,
+    help="Number of open ws connections."
+)
+@click.option(
+    "--emulator_id",
+    "-ei",
+    default=1,
+    help="Emulator ID.")
+@click.option(
+    "--refresh_timeout",
+    "-to",
+    default=1.0,
+    help="Timeout for refresh in secs."
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Enabling verbose logging."
+)
 async def main(
     server, routes_number, buses_per_route, websockets_number,
     emulator_id, refresh_timeout, verbose
 ):
-    print("--routes_number", routes_number)
-    print("--buses_per_route", buses_per_route)
-    print("--websockets_number", websockets_number)
-    print("--emulator_id", emulator_id)
-    print("--refresh_timeout", refresh_timeout)
-    print("--verbose", verbose)
 
     logging.getLogger('trio-websocket').setLevel(logging.WARNING)
     logging.basicConfig(format='%(message)s')
