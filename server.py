@@ -9,17 +9,18 @@ from trio_websocket import serve_websocket
 
 buses = {}
 
-async def receive_bus_coordinates(request):
+logger = logging.getLogger('server')
 
+
+async def receive_bus_coordinates(request):
     ws = await request.accept()
 
     while True:
-
         try:
             received_message = await ws.get_message()
             bus_info = json.loads(received_message)
 
-            logging.debug(f'Received message: {bus_info}')
+            logger.debug(f'Received message: {bus_info}')
 
             buses.update({bus_info['busId']: bus_info})
 
@@ -27,9 +28,7 @@ async def receive_bus_coordinates(request):
             break
 
 
-async def talk_to_browser(request):
-    ws = await request.accept()
-
+async def send_bus_coords(ws):
     while True:
         buses_location = [coords for coords in buses.values()]
         browser_msg = {
@@ -38,7 +37,7 @@ async def talk_to_browser(request):
         }
         try:
             await ws.send_message(json.dumps(browser_msg, ensure_ascii=True))
-            logging.debug(f'Talk to browser: {browser_msg["buses"]}')
+            logger.debug(f'Talk to browser: {browser_msg["buses"]}')
 
             await trio.sleep(0.5)
 
@@ -46,9 +45,28 @@ async def talk_to_browser(request):
             break
 
 
+async def listen_browser(ws):
+    while True:
+        try:
+            bounds = await ws.get_message()
+            logger.debug(json.loads(bounds))
+        except ConnectionClosed:
+            break
+
+
+async def talk_to_browser(request):
+    ws = await request.accept()
+    async with trio.open_nursery() as nursery:
+        nursery.start_soon(send_bus_coords, ws)
+        nursery.start_soon(listen_browser, ws)
+
+
 async def main():
     logging.getLogger('trio-websocket').setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.DEBUG, format='%(message)s')
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(levelname)s:%(name)s:%(message)s'
+    )
 
     async with trio.open_nursery() as nursery:
         nursery.start_soon(
