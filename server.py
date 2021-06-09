@@ -20,7 +20,7 @@ async def receive_bus_coordinates(request):
             received_message = await ws.get_message()
             bus_info = json.loads(received_message)
 
-            logger.debug(f'Received message: {bus_info}')
+            logger.debug(f'Received message:{bus_info}')
 
             buses.update({bus_info['busId']: bus_info})
 
@@ -28,37 +28,57 @@ async def receive_bus_coordinates(request):
             break
 
 
-async def send_bus_coords(ws):
+async def send_buses(ws, bounds):
     while True:
-        buses_location = [coords for coords in buses.values()]
+        buses_location = [
+            coords
+            for coords
+            in buses.values()
+            if is_inside(bounds, coords['lat'], coords['lng'])
+        ]
         browser_msg = {
             'msgType': 'Buses',
             'buses': buses_location
         }
         try:
             await ws.send_message(json.dumps(browser_msg, ensure_ascii=True))
-            logger.debug(f'Talk to browser: {browser_msg["buses"]}')
+            logger.debug(f'Talk to browser:{browser_msg["buses"]}')
+            logger.debug(f'{len(buses_location)} buses inside bounds')
 
-            await trio.sleep(0.5)
+            await trio.sleep(2)
 
         except ConnectionClosed:
             break
 
 
-async def listen_browser(ws):
+async def listen_browser(ws, bounds):
     while True:
         try:
-            bounds = await ws.get_message()
-            logger.debug(json.loads(bounds))
+            message = await ws.get_message()
+            new_bounds = json.loads(message)
+            bounds.update(new_bounds['data'])
+
+            logger.debug(new_bounds)
         except ConnectionClosed:
             break
 
 
 async def talk_to_browser(request):
     ws = await request.accept()
+    bounds = {}
     async with trio.open_nursery() as nursery:
-        nursery.start_soon(send_bus_coords, ws)
-        nursery.start_soon(listen_browser, ws)
+        nursery.start_soon(send_buses, ws, bounds)
+        nursery.start_soon(listen_browser, ws, bounds)
+
+
+def is_inside(bounds, lat, lng):
+    if not bounds:
+        return
+    south_lat = bounds['south_lat']
+    north_lat = bounds['north_lat']
+    west_lng = bounds['west_lng']
+    east_lng = bounds['east_lng']
+    return south_lat <= lat <= north_lat and west_lng <= lng <= east_lng
 
 
 async def main():
