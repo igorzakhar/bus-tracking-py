@@ -2,14 +2,45 @@ import json
 import logging
 import sys
 
-import trio
+from dataclasses import dataclass
+from dataclasses import asdict
 
+import trio
 from trio_websocket import ConnectionClosed
 from trio_websocket import serve_websocket
 
 buses = {}
 
 logger = logging.getLogger('server')
+
+
+@dataclass
+class Bus:
+    busId: int
+    lat: float
+    lng: float
+    route: str
+
+
+@dataclass
+class WindowBounds:
+    south_lat: float = 0
+    north_lat: float = 0
+    west_lng: float = 0
+    east_lng: float = 0
+
+    def is_inside(self, lat, lng):
+        south_lat = self.south_lat
+        north_lat = self.north_lat
+        west_lng = self.west_lng
+        east_lng = self.east_lng
+        return south_lat <= lat <= north_lat and west_lng <= lng <= east_lng
+
+    def update(self, south_lat, north_lat, west_lng, east_lng):
+        self.south_lat = south_lat
+        self.north_lat = north_lat
+        self.west_lng = west_lng
+        self.east_lng = east_lng
 
 
 async def receive_bus_coordinates(request):
@@ -20,9 +51,10 @@ async def receive_bus_coordinates(request):
             received_message = await ws.get_message()
             bus_info = json.loads(received_message)
 
-            logger.debug(f'Received message:{bus_info}')
+            bus = Bus(**bus_info)
+            buses.update({bus.busId: bus})
 
-            buses.update({bus_info['busId']: bus_info})
+            logger.debug(f'Received message:{asdict(bus)}')
 
         except ConnectionClosed:
             break
@@ -31,10 +63,10 @@ async def receive_bus_coordinates(request):
 async def send_buses(ws, bounds):
     while True:
         buses_location = [
-            coords
-            for coords
+            asdict(bus)
+            for bus
             in buses.values()
-            if is_inside(bounds, coords['lat'], coords['lng'])
+            if bounds.is_inside(bus.lat, bus.lng)
         ]
         browser_msg = {
             'msgType': 'Buses',
@@ -42,6 +74,7 @@ async def send_buses(ws, bounds):
         }
         try:
             await ws.send_message(json.dumps(browser_msg, ensure_ascii=True))
+
             logger.debug(f'Talk to browser:{browser_msg["buses"]}')
             logger.debug(f'{len(buses_location)} buses inside bounds')
 
@@ -56,7 +89,7 @@ async def listen_browser(ws, bounds):
         try:
             message = await ws.get_message()
             new_bounds = json.loads(message)
-            bounds.update(new_bounds['data'])
+            bounds.update(**new_bounds.get('data'))
 
             logger.debug(new_bounds)
         except ConnectionClosed:
@@ -65,7 +98,7 @@ async def listen_browser(ws, bounds):
 
 async def talk_to_browser(request):
     ws = await request.accept()
-    bounds = {}
+    bounds = WindowBounds()
     async with trio.open_nursery() as nursery:
         nursery.start_soon(send_buses, ws, bounds)
         nursery.start_soon(listen_browser, ws, bounds)
