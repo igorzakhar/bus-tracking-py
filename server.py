@@ -1,13 +1,14 @@
 import json
 import logging
-import sys
-
-from dataclasses import dataclass
+from contextlib import suppress
 from dataclasses import asdict
+from dataclasses import dataclass
 
 import trio
+import asyncclick as click
 from trio_websocket import ConnectionClosed
 from trio_websocket import serve_websocket
+
 
 buses = {}
 
@@ -78,7 +79,7 @@ async def send_buses(ws, bounds):
             logger.debug(f'Talk to browser:{browser_msg["buses"]}')
             logger.debug(f'{len(buses_location)} buses inside bounds')
 
-            await trio.sleep(2)
+            await trio.sleep(1)
 
         except ConnectionClosed:
             break
@@ -114,32 +115,62 @@ def is_inside(bounds, lat, lng):
     return south_lat <= lat <= north_lat and west_lng <= lng <= east_lng
 
 
-async def main():
+@click.command()
+@click.option(
+    "--frontend_server",
+    "-fs",
+    default="127.0.0.1",
+    help="Frontend server."
+)
+@click.option(
+    "--bus_server",
+    "-bs",
+    default="127.0.0.1",
+    help="Address of the tracking server."
+)
+@click.option(
+    "--browser_port",
+    "-bp",
+    default=8000,
+    help="Port of the frontend server."
+)
+@click.option(
+    "--bus_port",
+    "-fp",
+    default=8080,
+    help="Port of the tracking server."
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Enabling verbose logging."
+)
+async def main(frontend_server, browser_port, bus_server, bus_port, verbose):
     logging.getLogger('trio-websocket').setLevel(logging.WARNING)
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(levelname)s:%(name)s:%(message)s'
-    )
+    logging.basicConfig(format='%(levelname)s:%(name)s:%(message)s')
+
+    if verbose:
+        logger.setLevel(logging.DEBUG)
 
     async with trio.open_nursery() as nursery:
         nursery.start_soon(
             serve_websocket,
             receive_bus_coordinates,
-            '127.0.0.1',
-            8080,
+            bus_server,
+            bus_port,
             None
         )
         nursery.start_soon(
             serve_websocket,
             talk_to_browser,
-            '127.0.0.1',
-            8000,
+            frontend_server,
+            browser_port,
             None
         )
 
 
 if __name__ == '__main__':
-    try:
-        trio.run(main)
-    except KeyboardInterrupt:
-        sys.exit()
+    with suppress(KeyboardInterrupt):
+        main(_anyio_backend="trio")

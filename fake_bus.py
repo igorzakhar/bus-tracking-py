@@ -4,12 +4,10 @@ import json
 import logging
 import os
 import random
-
 from contextlib import suppress
 
-import asyncclick as click
 import trio
-
+import asyncclick as click
 from trio_websocket import ConnectionClosed
 from trio_websocket import HandshakeError
 from trio_websocket import open_websocket_url
@@ -89,8 +87,14 @@ async def make_channels(nursery, server_addr, sockets_count, timeout):
 @click.option(
     "--server",
     "-s",
-    default="127.0.0.1:8080",
+    default="127.0.0.1",
     help="Address of the tracking server."
+)
+@click.option(
+    "--bus_port",
+    "-bp",
+    default="8080",
+    help="Port of the tracking server."
 )
 @click.option(
     "--routes_number",
@@ -127,7 +131,7 @@ async def make_channels(nursery, server_addr, sockets_count, timeout):
     help="Enabling verbose logging."
 )
 async def main(
-    server, routes_number, buses_per_route, websockets_number,
+    server, bus_port, routes_number, buses_per_route, websockets_number,
     emulator_id, refresh_timeout, verbose
 ):
 
@@ -137,7 +141,7 @@ async def main(
     if verbose:
         logger.setLevel(logging.DEBUG)
 
-    server_url = f'ws://{server}'
+    server_url = f'ws://{server}:{bus_port}'
 
     async with trio.open_nursery() as nursery:
         send_channels = await make_channels(
