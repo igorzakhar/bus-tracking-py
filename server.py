@@ -1,11 +1,13 @@
 import json
 import logging
+
 from contextlib import suppress
 from dataclasses import asdict
 from dataclasses import dataclass
 
-import trio
 import asyncclick as click
+import trio
+
 from trio_websocket import ConnectionClosed
 from trio_websocket import serve_websocket
 
@@ -100,27 +102,21 @@ async def listen_browser(ws, bounds):
 async def talk_to_browser(request):
     ws = await request.accept()
     bounds = WindowBounds()
+
+    # The mutable argument "bounds" is used here
+    # (changes in the "listen_browser" function)
+
     async with trio.open_nursery() as nursery:
         nursery.start_soon(send_buses, ws, bounds)
         nursery.start_soon(listen_browser, ws, bounds)
 
 
-def is_inside(bounds, lat, lng):
-    if not bounds:
-        return
-    south_lat = bounds['south_lat']
-    north_lat = bounds['north_lat']
-    west_lng = bounds['west_lng']
-    east_lng = bounds['east_lng']
-    return south_lat <= lat <= north_lat and west_lng <= lng <= east_lng
-
-
 @click.command()
 @click.option(
-    "--frontend_server",
-    "-fs",
+    "--host",
+    "-h",
     default="127.0.0.1",
-    help="Frontend server."
+    help="Address of the main server."
 )
 @click.option(
     "--bus_server",
@@ -132,7 +128,7 @@ def is_inside(bounds, lat, lng):
     "--browser_port",
     "-bp",
     default=8000,
-    help="Port of the frontend server."
+    help="Browser port"
 )
 @click.option(
     "--bus_port",
