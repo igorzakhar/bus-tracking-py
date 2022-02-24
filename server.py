@@ -143,7 +143,7 @@ async def talk_to_browser(request):
     default=False,
     help="Enabling verbose logging."
 )
-async def main(frontend_server, browser_port, bus_server, bus_port, verbose):
+async def main(host, browser_port, bus_server, bus_port, verbose):
     logging.getLogger('trio-websocket').setLevel(logging.WARNING)
     logging.basicConfig(format='%(levelname)s:%(name)s:%(message)s')
 
@@ -161,7 +161,7 @@ async def main(frontend_server, browser_port, bus_server, bus_port, verbose):
         nursery.start_soon(
             serve_websocket,
             talk_to_browser,
-            frontend_server,
+            host,
             browser_port,
             None
         )
