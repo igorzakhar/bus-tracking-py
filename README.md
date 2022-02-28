@@ -55,12 +55,12 @@ $ python server.py --help
 Usage: server.py [OPTIONS]
 
 Options:
-  -h, --host TEXT              Address of the main server.
-  -bs, --bus_server TEXT       Address of the tracking server.
-  -bp, --browser_port INTEGER  Browser port
-  -fp, --bus_port INTEGER      Port of the tracking server.
-  -v, --verbose                Enabling verbose logging.
-  --help                       Show this message and exit.
+  -h, --host TEXT             Address of the main server.
+  -bs, --bus_server TEXT      Address of the tracking server.
+  -cp, --client_port INTEGER  Client port (ex. browser)
+  -bp, --bus_port INTEGER     Port of the tracking server (GPS gateway).
+  -v, --verbose               Enabling verbose logging.
+  --help                      Show this message and exit.
 ```
 
 После запуска ```server.py``` и ```fake_bus.py``` откройте в браузере файл ```frontend/index.html```.

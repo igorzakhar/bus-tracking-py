@@ -171,16 +171,16 @@ async def talk_to_browser(request):
     help="Address of the tracking server."
 )
 @click.option(
-    "--browser_port",
-    "-bp",
+    "--client_port",
+    "-cp",
     default=8000,
-    help="Browser port"
+    help="Client port (ex. browser)."
 )
 @click.option(
     "--bus_port",
-    "-fp",
+    "-bp",
     default=8080,
-    help="Port of the tracking server."
+    help="Port of the tracking server (GPS gateway)."
 )
 @click.option(
     "--verbose",
@@ -189,7 +189,7 @@ async def talk_to_browser(request):
     default=False,
     help="Enabling verbose logging."
 )
-async def main(host, browser_port, bus_server, bus_port, verbose):
+async def main(host, client_port, bus_server, bus_port, verbose):
     logging.getLogger('trio-websocket').setLevel(logging.WARNING)
     logging.basicConfig(format='%(levelname)s:%(name)s:%(message)s')
 
@@ -208,7 +208,7 @@ async def main(host, browser_port, bus_server, bus_port, verbose):
             serve_websocket,
             talk_to_browser,
             host,
-            browser_port,
+            client_port,
             None
         )
 
