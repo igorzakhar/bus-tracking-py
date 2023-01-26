@@ -65,6 +65,3 @@ Options:
 
 После запуска ```server.py``` и ```fake_bus.py``` откройте в браузере файл ```frontend/index.html```.
 
-# Цели проекта
-
-Код написан в учебных целях в рамках курса [Devman](https://dvmn.org/modules).
